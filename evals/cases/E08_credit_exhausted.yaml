@@ -1,0 +1,31 @@
+id: E08
+title: "Pilot: its only OpenRouter key out of credit"
+source: incident (Pilot tenant) -- generic error after ~30 s and models marked offline
+tracks: [A, B]
+legacy_expect: fail
+scenario: assist
+agent: assistant
+agent_patch: {model_policy: {fallback: ["openrouter/glm-4.6"]}}
+input: "今天的待办有哪些？"
+notes: "Only one gateway configured: the user must see the specific cause within 5 s, and no model is marked offline. See E08b for the two-gateway variant."
+ports:
+  faults: [{kind: credit_exhausted, route: "openrouter/glm-4.6", times: -1}]
+  models:
+    "staff:assistant@1":
+      - text: "不应被调用"
+legacy:
+  - - [0, meta, {message_id: "legacy_m1"}]
+    - [31000, error, {message: "无法连接到 Captain"}]
+checks:
+  - grammar
+  - schema_valid
+  - error: {code: credit_exhausted, retryable: false, within_ms: 5000}
+  - no_model_marked_offline
+  - outcomes: [failed]
+staging:
+  runs: 3
+  steps:
+    - "Staging tenant with ONE gateway whose key has zero credit (ask Victor for a revoked/empty test key)."
+    - "Send a message; time from send to the error card; check the model registry afterwards."
+  metrics: ["seconds to specific cause", "models marked offline"]
+  pass_criteria: ["cause (credit_exhausted) shown < 5 s", "0 models marked offline"]

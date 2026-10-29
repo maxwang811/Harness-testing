@@ -1,0 +1,24 @@
+[project]
+name = "harness-testing"
+version = "0.1.0"
+description = "Phase-1 test bed for the Captain harness contract, SDK comparison slices and offline evaluation cases"
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.7,<3",
+    "pyyaml>=6",
+    "jsonschema>=4.20",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+# Goal 2 candidates. Versions current as of 2026-10: pydantic-ai 2.56, openai-agents 0.24.
+pydantic-ai = ["pydantic-ai-slim>=2.0,<3"]
+openai-agents = ["openai-agents>=0.24,<0.25"]
+slices = ["pydantic-ai-slim>=2.0,<3", "openai-agents>=0.24,<0.25"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.setuptools.packages.find]
+include = ["harness*", "fakes*", "impls*", "evals*", "router*", "tools*"]

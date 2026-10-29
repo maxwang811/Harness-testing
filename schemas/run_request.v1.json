@@ -1,0 +1,678 @@
+{
+  "$defs": {
+    "AgentSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "extensions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Extensions",
+          "type": "array"
+        },
+        "instructions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/InstructionBlock"
+          },
+          "title": "Instructions",
+          "type": "array"
+        },
+        "model_policy": {
+          "$ref": "#/$defs/ModelPolicy",
+          "default": {
+            "allowlist": null,
+            "fallback": [],
+            "max_cost_per_call": null,
+            "reasoning_effort": null,
+            "tier": "standard"
+          }
+        },
+        "output": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OutputSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "persona": {
+          "$ref": "#/$defs/Persona"
+        },
+        "ref": {
+          "title": "Ref",
+          "type": "string"
+        },
+        "skills": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SkillRef"
+          },
+          "title": "Skills",
+          "type": "array"
+        },
+        "subagents": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Subagents",
+          "type": "array"
+        },
+        "tools": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ToolRef"
+          },
+          "title": "Tools",
+          "type": "array"
+        }
+      },
+      "required": [
+        "ref",
+        "persona"
+      ],
+      "title": "AgentSpec",
+      "type": "object"
+    },
+    "AttachmentInput": {
+      "additionalProperties": false,
+      "properties": {
+        "file_id": {
+          "title": "File Id",
+          "type": "string"
+        },
+        "mime": {
+          "title": "Mime",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "const": "attachment",
+          "default": "attachment",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file_id",
+        "name",
+        "mime"
+      ],
+      "title": "AttachmentInput",
+      "type": "object"
+    },
+    "FeatureSet": {
+      "additionalProperties": false,
+      "properties": {
+        "hash": {
+          "default": "none",
+          "title": "Hash",
+          "type": "string"
+        },
+        "ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Ids",
+          "type": "array"
+        },
+        "params": {
+          "additionalProperties": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "default": {},
+          "title": "Params",
+          "type": "object"
+        }
+      },
+      "title": "FeatureSet",
+      "type": "object"
+    },
+    "InstructionBlock": {
+      "additionalProperties": false,
+      "description": "Role, rules and reply style travel as blocks, never one concatenated string,\nso the experience layer and evals can tell which block changed.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "role",
+            "rules",
+            "style",
+            "context",
+            "skill",
+            "tenant"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "text"
+      ],
+      "title": "InstructionBlock",
+      "type": "object"
+    },
+    "MentionInput": {
+      "additionalProperties": false,
+      "properties": {
+        "display": {
+          "title": "Display",
+          "type": "string"
+        },
+        "ref": {
+          "title": "Ref",
+          "type": "string"
+        },
+        "type": {
+          "const": "mention",
+          "default": "mention",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref",
+        "display"
+      ],
+      "title": "MentionInput",
+      "type": "object"
+    },
+    "ModelPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "allowlist": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Allowlist"
+        },
+        "fallback": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Fallback",
+          "type": "array"
+        },
+        "max_cost_per_call": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Cost Per Call"
+        },
+        "reasoning_effort": {
+          "anyOf": [
+            {
+              "enum": [
+                "none",
+                "low",
+                "medium",
+                "high"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reasoning Effort"
+        },
+        "tier": {
+          "default": "standard",
+          "enum": [
+            "fast",
+            "standard",
+            "strong"
+          ],
+          "title": "Tier",
+          "type": "string"
+        }
+      },
+      "title": "ModelPolicy",
+      "type": "object"
+    },
+    "OutputSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "json_schema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Json Schema"
+        },
+        "kind": {
+          "default": "text",
+          "enum": [
+            "text",
+            "pptx",
+            "docx",
+            "xlsx",
+            "json"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "title": "OutputSpec",
+      "type": "object"
+    },
+    "Persona": {
+      "additionalProperties": false,
+      "properties": {
+        "language": {
+          "default": "zh-CN",
+          "title": "Language",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "role"
+      ],
+      "title": "Persona",
+      "type": "object"
+    },
+    "ResumeInput": {
+      "additionalProperties": false,
+      "description": "One answer to one interrupt (mirrors an AG-UI RunAgentInput.resume entry).",
+      "properties": {
+        "actor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Actor"
+        },
+        "interrupt_id": {
+          "title": "Interrupt Id",
+          "type": "string"
+        },
+        "payload": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Payload"
+        },
+        "status": {
+          "default": "resolved",
+          "enum": [
+            "resolved",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "interrupt_id"
+      ],
+      "title": "ResumeInput",
+      "type": "object"
+    },
+    "ResumeState": {
+      "additionalProperties": false,
+      "description": "Opaque to everyone but the implementation that wrote it.",
+      "properties": {
+        "blob": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": {},
+          "title": "Blob"
+        },
+        "format_version": {
+          "default": 1,
+          "title": "Format Version",
+          "type": "integer"
+        },
+        "impl": {
+          "title": "Impl",
+          "type": "string"
+        },
+        "step_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Step Id"
+        }
+      },
+      "required": [
+        "impl"
+      ],
+      "title": "ResumeState",
+      "type": "object"
+    },
+    "RunOptions": {
+      "additionalProperties": false,
+      "properties": {
+        "deadline_s": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Deadline S"
+        },
+        "dry_run": {
+          "default": false,
+          "title": "Dry Run",
+          "type": "boolean"
+        },
+        "locale": {
+          "default": "zh-CN",
+          "title": "Locale",
+          "type": "string"
+        },
+        "max_steps": {
+          "default": 24,
+          "title": "Max Steps",
+          "type": "integer"
+        }
+      },
+      "title": "RunOptions",
+      "type": "object"
+    },
+    "SkillRef": {
+      "additionalProperties": false,
+      "properties": {
+        "body_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Body Ref"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "name",
+        "description"
+      ],
+      "title": "SkillRef",
+      "type": "object"
+    },
+    "TextInput": {
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "type": {
+          "const": "text",
+          "default": "text",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "TextInput",
+      "type": "object"
+    },
+    "ToolRef": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "requires_approval": {
+          "default": false,
+          "title": "Requires Approval",
+          "type": "boolean"
+        },
+        "scope": {
+          "default": "workspace",
+          "title": "Scope",
+          "type": "string"
+        },
+        "side_effects": {
+          "default": false,
+          "title": "Side Effects",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "ToolRef",
+      "type": "object"
+    }
+  },
+  "$id": "https://captain.internal/schemas/run_request.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "agent": {
+      "$ref": "#/$defs/AgentSpec"
+    },
+    "continues_run_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Continues Run Id"
+    },
+    "features": {
+      "$ref": "#/$defs/FeatureSet",
+      "default": {
+        "hash": "none",
+        "ids": [],
+        "params": {}
+      }
+    },
+    "idempotency_key": {
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "input": {
+      "default": [],
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "attachment": "#/$defs/AttachmentInput",
+            "mention": "#/$defs/MentionInput",
+            "text": "#/$defs/TextInput"
+          },
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/TextInput"
+          },
+          {
+            "$ref": "#/$defs/AttachmentInput"
+          },
+          {
+            "$ref": "#/$defs/MentionInput"
+          }
+        ]
+      },
+      "title": "Input",
+      "type": "array"
+    },
+    "options": {
+      "$ref": "#/$defs/RunOptions",
+      "default": {
+        "deadline_s": null,
+        "dry_run": false,
+        "locale": "zh-CN",
+        "max_steps": 24
+      }
+    },
+    "resume_inputs": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ResumeInput"
+      },
+      "title": "Resume Inputs",
+      "type": "array"
+    },
+    "resume_state": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ResumeState"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "roster": {
+      "additionalProperties": {
+        "$ref": "#/$defs/AgentSpec"
+      },
+      "default": {},
+      "title": "Roster",
+      "type": "object"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "scenario": {
+      "enum": [
+        "home",
+        "assist",
+        "delegate",
+        "oneshot"
+      ],
+      "title": "Scenario",
+      "type": "string"
+    },
+    "thread_id": {
+      "title": "Thread Id",
+      "type": "string"
+    },
+    "v": {
+      "const": 1,
+      "default": 1,
+      "title": "V",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "run_id",
+    "thread_id",
+    "scenario",
+    "agent",
+    "idempotency_key"
+  ],
+  "title": "RunRequest",
+  "type": "object"
+}

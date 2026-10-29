@@ -1,0 +1,319 @@
+{
+  "$defs": {
+    "InstructionBlock": {
+      "additionalProperties": false,
+      "description": "Role, rules and reply style travel as blocks, never one concatenated string,\nso the experience layer and evals can tell which block changed.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "role",
+            "rules",
+            "style",
+            "context",
+            "skill",
+            "tenant"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "text"
+      ],
+      "title": "InstructionBlock",
+      "type": "object"
+    },
+    "ModelPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "allowlist": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Allowlist"
+        },
+        "fallback": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Fallback",
+          "type": "array"
+        },
+        "max_cost_per_call": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Cost Per Call"
+        },
+        "reasoning_effort": {
+          "anyOf": [
+            {
+              "enum": [
+                "none",
+                "low",
+                "medium",
+                "high"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reasoning Effort"
+        },
+        "tier": {
+          "default": "standard",
+          "enum": [
+            "fast",
+            "standard",
+            "strong"
+          ],
+          "title": "Tier",
+          "type": "string"
+        }
+      },
+      "title": "ModelPolicy",
+      "type": "object"
+    },
+    "OutputSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "json_schema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Json Schema"
+        },
+        "kind": {
+          "default": "text",
+          "enum": [
+            "text",
+            "pptx",
+            "docx",
+            "xlsx",
+            "json"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "title": "OutputSpec",
+      "type": "object"
+    },
+    "Persona": {
+      "additionalProperties": false,
+      "properties": {
+        "language": {
+          "default": "zh-CN",
+          "title": "Language",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "role"
+      ],
+      "title": "Persona",
+      "type": "object"
+    },
+    "SkillRef": {
+      "additionalProperties": false,
+      "properties": {
+        "body_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Body Ref"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "name",
+        "description"
+      ],
+      "title": "SkillRef",
+      "type": "object"
+    },
+    "ToolRef": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "requires_approval": {
+          "default": false,
+          "title": "Requires Approval",
+          "type": "boolean"
+        },
+        "scope": {
+          "default": "workspace",
+          "title": "Scope",
+          "type": "string"
+        },
+        "side_effects": {
+          "default": false,
+          "title": "Side Effects",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "ToolRef",
+      "type": "object"
+    }
+  },
+  "$id": "https://captain.internal/schemas/agent_spec.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "extensions": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Extensions",
+      "type": "array"
+    },
+    "instructions": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/InstructionBlock"
+      },
+      "title": "Instructions",
+      "type": "array"
+    },
+    "model_policy": {
+      "$ref": "#/$defs/ModelPolicy",
+      "default": {
+        "allowlist": null,
+        "fallback": [],
+        "max_cost_per_call": null,
+        "reasoning_effort": null,
+        "tier": "standard"
+      }
+    },
+    "output": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OutputSpec"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "persona": {
+      "$ref": "#/$defs/Persona"
+    },
+    "ref": {
+      "title": "Ref",
+      "type": "string"
+    },
+    "skills": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/SkillRef"
+      },
+      "title": "Skills",
+      "type": "array"
+    },
+    "subagents": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Subagents",
+      "type": "array"
+    },
+    "tools": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ToolRef"
+      },
+      "title": "Tools",
+      "type": "array"
+    }
+  },
+  "required": [
+    "ref",
+    "persona"
+  ],
+  "title": "AgentSpec",
+  "type": "object"
+}

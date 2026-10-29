@@ -1,0 +1,37 @@
+# Compiled AgentSpecs used by the offline cases (what agent_specs.compile would produce).
+# Synthetic: replace with specs compiled from real digital_staff rows once the compiler exists.
+assistant:
+  ref: "staff:assistant@1"
+  persona: {name: "小C", role: "Captain 项目助理", language: "zh-CN"}
+  instructions:
+    - {kind: role, text: "你是团队的项目助理，负责回答问题、调用工具并在需要时把对话交给合适的同事。", source: "digital_staff:assistant@1"}
+    - {kind: style, text: "回复简洁，先给结论。", source: "digital_staff:assistant@1"}
+  model_policy: {tier: standard, fallback: ["openrouter/glm-4.6", "siliconflow/glm-4.6"]}
+  tools:
+    - {id: web_search}
+    - {id: web_fetch}
+    - {id: send_email, requires_approval: true, side_effects: true}
+    - {id: create_task, side_effects: true}
+  subagents: ["staff:analyst@1", "staff:designer@1"]
+analyst:
+  ref: "staff:analyst@1"
+  persona: {name: "分析师", role: "业务分析专家", language: "zh-CN"}
+  instructions:
+    - {kind: role, text: "你负责数据分析和结论。", source: "digital_staff:analyst@1"}
+  model_policy: {tier: strong, fallback: ["openrouter/glm-4.6", "siliconflow/glm-4.6"]}
+  tools:
+    - {id: web_search}
+designer:
+  ref: "staff:designer@1"
+  persona: {name: "设计师", role: "演示文稿设计", language: "zh-CN"}
+  instructions:
+    - {kind: role, text: "你负责把结论做成 PPT。", source: "digital_staff:designer@1"}
+  model_policy: {tier: standard, fallback: ["openrouter/glm-4.6", "siliconflow/glm-4.6"]}
+  tools:
+    - {id: make_pptx, side_effects: true}
+classifier:
+  ref: "staff:classifier@1"
+  persona: {name: "路由", role: "意图分类", language: "zh-CN"}
+  instructions:
+    - {kind: rules, text: "只输出一个标签：chat | task | delegate。"}
+  model_policy: {tier: fast, reasoning_effort: none, fallback: ["siliconflow/glm-5.3-flash", "openrouter/qwen3-8b"]}

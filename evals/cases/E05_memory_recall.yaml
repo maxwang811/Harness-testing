@@ -1,0 +1,39 @@
+id: E05
+title: Memory recall, scopes reported truthfully
+source: core flow -- memory_gateway.py, project_context_assembler.py
+tracks: [A, B]
+scenario: assist
+agent: assistant
+features: {ids: [memory], params: {memory: {scopes: [workspace, thread, staff]}}}
+input: "我们上次定的发布日期是哪天？"
+notes: >
+  The staff-scope index does not exist in this fixture, so an honest port reports only
+  workspace and thread as searched. Recall vs legacy is Track B (labelled question set).
+ports:
+  memory:
+    searchable_scopes: [workspace, thread]
+    hits: [{id: "mem_12", scope: workspace, text: "2026-10-12 会议决定：iOS 1.4 于 11 月 18 日发布", score: 0.82}]
+  models:
+    "staff:assistant@1":
+      - text: "上次定的是 11 月 18 日发布 iOS 1.4（10 月 12 日的会议）。"
+        first_chunk_ms: 450
+        expect: {any_contains: "11 月 18 日发布"}
+legacy:
+  - - [0, meta, {message_id: "legacy_m1"}]
+    - [140, memory, {query: "我们上次定的发布日期是哪天？", scopes: [workspace, thread, staff], hits: 1}]
+    - [620, token, {text: "上次定的是 11 月 18 日发布 iOS 1.4（10 月 12 日的会议）。"}]
+    - [700, done, {}]
+checks:
+  - grammar
+  - schema_valid
+  - observable_matches_legacy
+  - memory_scopes_truthful
+  - outcomes: [completed]
+staging:
+  runs: 30
+  steps:
+    - "Build a labelled set: 30 questions from internal workspaces, each with the memory ids that answer it (2 people label, disagreements dropped)."
+    - "Run each question once per implementation with the memory feature on."
+    - "Recall@8 = share of labelled ids present in the hits the model saw (from the MemoryPort call log)."
+  metrics: ["recall@8", "scopes_requested vs scopes_searched per run"]
+  pass_criteria: ["candidate recall@8 >= legacy recall@8", "scopes_searched always equals what the port searched"]

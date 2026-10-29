@@ -1,0 +1,35 @@
+id: E09
+title: "10-21 provider outage broke PPT delegations: dead gateway skipped, delegation still delivers"
+source: incident 2026-10-21
+tracks: [A, B]
+legacy_expect: fail
+scenario: delegate
+agent: assistant
+input: "把上个月的留存分析做成 5 页 PPT"
+ports:
+  faults: [{kind: dead, route: "openrouter/glm-4.6", times: -1}]
+  models:
+    "staff:assistant@1":
+      - json_value: {steps: [{id: "p1", title: "分析留存数据", assignee: "staff:analyst@1"},
+                             {id: "p2", title: "制作 PPT", assignee: "staff:designer@1"}]}
+    "staff:analyst@1":
+      - text: "结论：7 日留存下降 6 个百分点。"
+    "staff:designer@1":
+      - tool_calls: [{id: "d1", name: "make_pptx", args: {title: "留存分析", slides: 5}}]
+      - text: "PPT 已生成。"
+  tools:
+    make_pptx: {side_effects: true, artifact: {kind: pptx, title: "留存分析"}, results: [{ok: true, content: "created", summary: "5 slides"}]}
+legacy:
+  - - [0, coordination_plan, {plan_id: "lp1", steps: [{id: p1, title: "分析留存数据", assignee: "staff:analyst@1", status: pending}, {id: p2, title: "制作 PPT", assignee: "staff:designer@1", status: pending}]}]
+    - [60000, error, {message: "delegation failed"}]
+checks:
+  - grammar
+  - schema_valid
+  - route_used: {route: "siliconflow/glm-4.6"}
+  - artifact_delivered: {kind: pptx}
+  - outcomes: [completed]
+staging:
+  runs: 3
+  steps: ["On staging, point one gateway at a black-hole URL (Victor: config switch) and run 3 delegations."]
+  metrics: ["deliveries", "time lost on the dead gateway per model call"]
+  pass_criteria: ["3/3 deliver", "dead gateway costs < 1 s per call after the first detection"]

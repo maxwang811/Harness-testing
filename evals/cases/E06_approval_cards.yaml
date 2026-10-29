@@ -1,0 +1,48 @@
+id: E06
+title: Ask-cards and approval cards
+source: core flow -- today's loop_in approvals and delegation questions
+tracks: [A, B]
+legacy_expect: fail
+scenario: assist
+agent: assistant
+input: "把这份周报发给 boss@corp.com"
+notes: >
+  Run 1 asks for approval; run 2 (continuation) carries a "no"; the model then tries the same
+  send again and must not get a second card; run 3 re-submits the same answer (double tap) and
+  must be rejected with resume_invalid and no side effect. The legacy stream asks twice and its
+  cards have no default or deadline (synthetic stand-in for the real recording).
+continuations:
+  - answers: [{approved: false}]
+  - stale: true
+ports:
+  models:
+    "staff:assistant@1":
+      - text: "我准备把周报发给 boss@corp.com，需要你确认。"
+        tool_calls: [{id: "e1", name: "send_email", args: {to: "boss@corp.com", subject: "周报"}}]
+      - tool_calls: [{id: "e2", name: "send_email", args: {to: "boss@corp.com", subject: "周报"}}]
+        expect: {last_contains: "declined"}
+      - text: "好的，这次不发送。需要时再告诉我。"
+  tools:
+    send_email: {side_effects: true, requires_approval: true, results: [{ok: true, content: "sent", summary: "sent"}]}
+legacy:
+  - - [0, meta, {message_id: "legacy_m1"}]
+    - [300, token, {text: "我准备把周报发给 boss@corp.com，需要你确认。"}]
+    - [350, loop_in, {id: "li1", kind: approval, question: "发送周报给 boss@corp.com？", call_id: "e1", fingerprint: "send:boss"}]
+  - - [0, tool_call_started, {call_id: "e1", name: "send_email", args: {to: "boss@corp.com", subject: "周报"}}]
+    - [50, tool_call_result, {call_id: "e1", ok: false, summary: "declined"}]
+    - [400, loop_in, {id: "li2", kind: approval, question: "发送周报给 boss@corp.com？", call_id: "e2", fingerprint: "send:boss"}]
+checks:
+  - grammar
+  - schema_valid
+  - interrupt_card_complete
+  - never_asked_twice
+  - stale_resume_rejected
+  - outcomes: [interrupted, completed, failed]
+staging:
+  runs: 5
+  steps:
+    - "Internal account: trigger an approval (send email to an internal test address) and a clarification question."
+    - "Answer from web, then tap the same answer from iOS within 2 s (double submit)."
+    - "Let one card expire (set expires_at to now + 2 min on staging) and check the default action ran."
+  metrics: ["cards with assignee/default/deadline", "repeated questions per thread", "effects of double submit"]
+  pass_criteria: ["every card has all three fields", "0 repeated questions", "double submit takes effect once"]

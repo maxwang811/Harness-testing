@@ -1,0 +1,30 @@
+id: E08b
+title: "Pilot variant: second gateway configured, traffic moves automatically"
+source: incident (Pilot tenant)
+tracks: [A, B]
+legacy_expect: fail
+scenario: assist
+agent: assistant
+input: "今天的待办有哪些？"
+ports:
+  faults: [{kind: credit_exhausted, route: "openrouter/glm-4.6", times: -1}]
+  models:
+    "staff:assistant@1":
+      - text: "今天有 3 项待办：评审 iOS 1.4、回复客户、更新周报。"
+        first_chunk_ms: 450
+legacy:
+  - - [0, meta, {message_id: "legacy_m1"}]
+    - [31000, error, {message: "无法连接到 Captain"}]
+checks:
+  - grammar
+  - schema_valid
+  - route_used: {route: "siliconflow/glm-4.6"}
+  - notice: {code: model_fallback}
+  - no_model_marked_offline
+  - no_error_visible
+  - outcomes: [completed]
+staging:
+  runs: 5
+  steps: ["Same tenant with an empty OpenRouter key plus a funded SiliconFlow key; send 5 messages."]
+  metrics: ["route used per run (usage.route)", "user-visible errors"]
+  pass_criteria: ["5/5 answered via the second gateway", "0 errors shown"]

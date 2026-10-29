@@ -1,0 +1,29 @@
+id: E09b
+title: "10-21 variant: nothing works -- cause stated, plan kept"
+source: incident 2026-10-21
+tracks: [A]
+legacy_expect: fail
+scenario: delegate
+agent: assistant
+input: "把上个月的留存分析做成 5 页 PPT"
+ports:
+  faults: [{kind: dead, agent: "staff:designer@1", times: -1}]
+  models:
+    "staff:assistant@1":
+      - json_value: {steps: [{id: "p1", title: "分析留存数据", assignee: "staff:analyst@1"},
+                             {id: "p2", title: "制作 PPT", assignee: "staff:designer@1"}]}
+    "staff:analyst@1":
+      - text: "结论：7 日留存下降 6 个百分点。"
+    "staff:designer@1":
+      - text: "不应被调用"
+legacy:
+  - - [0, coordination_plan, {plan_id: "lp1", steps: [{id: p1, title: "分析留存数据", assignee: "staff:analyst@1", status: pending}, {id: p2, title: "制作 PPT", assignee: "staff:designer@1", status: pending}]}]
+    - [1500, delegation, {plan_id: "lp1", steps: [{id: p1, title: "分析留存数据", assignee: "staff:analyst@1", status: done}, {id: p2, title: "制作 PPT", assignee: "staff:designer@1", status: running}]}]
+    - [60000, coordination_plan, {plan_id: "lp1", steps: [{id: p1, title: "分析留存数据", assignee: "staff:analyst@1", status: pending}, {id: p2, title: "制作 PPT", assignee: "staff:designer@1", status: pending}]}]
+    - [60001, error, {message: "delegation failed"}]
+checks:
+  - grammar
+  - schema_valid
+  - error: {code: all_routes_unavailable, retryable: true}
+  - plan_kept_on_failure
+  - outcomes: [failed]
