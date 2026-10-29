@@ -8,7 +8,9 @@ stateful world (World), so every side effect is visible to the checks. Every run
     names the staff member that produced it;
   - the scenario's own checks: did the user get what they asked for, sent once, never asked twice.
 A run where the model took another path than the one the scenario is about counts as n/a, and a
-provider error (rate limit, network) as infra; neither counts as a pass or a fail.
+provider error (rate limit, network) as infra; neither counts as a pass or a fail. The report ends
+with a correctness score and an efficiency score per slice, with 95% intervals and a test of the
+difference between the slices (see scores() and the method notes printed under them).
 
     python live_eval.py                     # every scenario, 3 runs per slice, prints the scorecard
     python live_eval.py -n 5 -k L06,L10     # some scenarios, 5 runs each
@@ -28,6 +30,9 @@ import datetime as dt
 import hashlib
 import importlib
 import json
+import math
+import random
+import statistics
 import time
 from collections import Counter
 from dataclasses import asdict, dataclass, field
@@ -482,7 +487,175 @@ def counted(rs: list[Result]) -> list[Result]:
     return [r for r in rs if r.status in ("pass", "fail")]
 
 
-def report(results: list[Result], scenarios: list[Scenario], harnesses: list[str], model: str, runs: int) -> str:
+# ---------------------------------------------------------------- scores (fixed before measuring)
+
+EFFICIENCY = ("tokens", "wall_s")  # what the efficiency score combines, with equal weights
+MIN_PASSES = 2  # passing runs a slice needs in a scenario before its cost there is compared
+RESAMPLES = 2000  # bootstrap resamples and permutation shuffles
+Z = 1.959964  # 95%
+
+
+def cost(r: Result, metric: str) -> float:
+    return r.metrics["tokens_in"] + r.metrics["tokens_out"] if metric == "tokens" else r.metrics[metric]
+
+
+def log_cost(runs: list[Result], metrics: tuple[str, ...] = EFFICIENCY) -> float:
+    """Mean over the metrics of log(the mean cost of the runs)."""
+    return statistics.fmean(math.log(max(statistics.fmean(cost(r, m) for r in runs), 1e-9)) for m in metrics)
+
+
+def rate(runs: list[Result]) -> float:
+    return sum(r.status == "pass" for r in runs) / len(runs)
+
+
+def correctness(cells: dict, ids: list[str], h: str) -> tuple[float, float]:
+    """Mean pass rate over the scenarios (0-100) and its standard error. Each scenario's variance is taken
+    from (k + 1) / (n + 2) passes, so that 3 of 3 does not count as certain."""
+    var = 0.0
+    for sid in ids:
+        n, k = len(counted(cells[sid, h])), sum(r.status == "pass" for r in cells[sid, h])
+        adj = (k + 1) / (n + 2)
+        var += adj * (1 - adj) / (n + 2)
+    return 100 * statistics.fmean(rate(counted(cells[sid, h])) for sid in ids), 100 * math.sqrt(var) / len(ids)
+
+
+def efficiency(cells: dict, ids: list[str], harnesses: list[str],
+               metrics: tuple[str, ...] = EFFICIENCY) -> dict[str, float]:
+    """Per slice, 100 / the geometric mean over scenarios of its cost relative to the geometric mean of all
+    slices. 100 = average, higher = cheaper; an expensive scenario weighs no more than a cheap one."""
+    rel = dict.fromkeys(harnesses, 0.0)
+    for sid in ids:
+        logs = {h: log_cost(cells[sid, h], metrics) for h in harnesses}
+        for h in harnesses:
+            rel[h] += (logs[h] - statistics.fmean(logs.values())) / len(ids)
+    return {h: 100 * math.exp(-rel[h]) for h in harnesses}
+
+
+def quantile(xs: list[float], q: float) -> float:
+    xs = sorted(xs)
+    return xs[round(q * (len(xs) - 1))]
+
+
+def permutation_p(groups: list[tuple[list, list]], stat: Callable[[list[tuple[list, list]]], float],
+                  rng: random.Random) -> float:
+    """Two-sided p-value of stat under "the slice makes no difference": the runs of the two slices are
+    shuffled between them within each scenario."""
+    observed, hits = abs(stat(groups)), 0
+    for _ in range(RESAMPLES):
+        shuffled = []
+        for a, b in groups:
+            pool = [*a, *b]
+            rng.shuffle(pool)
+            shuffled.append((pool[:len(a)], pool[len(a):]))
+        hits += abs(stat(shuffled)) >= observed - 1e-9
+    return (hits + 1) / (RESAMPLES + 1)
+
+
+def scores(results: list[Result], scenarios: list[Scenario], harnesses: list[str], seed: int = 0) -> dict:
+    """Correctness and efficiency per slice, with 95% intervals, and each slice against the first one."""
+    rng = random.Random(seed)
+    cells = {(s.id, h): [r for r in results if r.scenario == s.id and r.harness == h]
+             for s in scenarios for h in harnesses}
+    both = [s.id for s in scenarios if all(counted(cells[s.id, h]) for h in harnesses)]
+    cheap = [s.id for s in scenarios
+             if all(sum(r.status == "pass" for r in cells[s.id, h]) >= MIN_PASSES for h in harnesses)]
+    passing = {(sid, h): [r for r in cells[sid, h] if r.status == "pass"] for sid in cheap for h in harnesses}
+    out: dict = {"correctness_scenarios": both, "efficiency_scenarios": cheap, "seed": seed, "slices": {},
+                 "differences": []}
+    if cheap:
+        eff = efficiency(passing, cheap, harnesses)
+        draws = [efficiency({k: rng.choices(v, k=len(v)) for k, v in passing.items()}, cheap, harnesses)
+                 for _ in range(RESAMPLES)]
+        parts = {m: efficiency(passing, cheap, harnesses, (m,)) for m in (*EFFICIENCY, "model_calls")}
+    for h in harnesses:
+        mine = [r for r in results if r.harness == h]
+        row: dict = {"runs": len(counted(mine)), "n/a": sum(r.status == "n/a" for r in mine),
+                     "infra": sum(r.status == "infra" for r in mine)}
+        if both:
+            c, se = correctness(cells, both, h)
+            row["correctness"] = (c, max(0.0, c - Z * se), min(100.0, c + Z * se), se)
+        if cheap:
+            ds = [d[h] for d in draws]
+            row["efficiency"] = (eff[h], quantile(ds, 0.025), quantile(ds, 0.975))
+            row |= {m: parts[m][h] for m in parts}
+            row["overhead_ms"] = statistics.fmean(statistics.fmean(1000 * (r.metrics["wall_s"] - r.metrics["model_s"])
+                                                                   for r in passing[sid, h]) for sid in cheap)
+            states = [statistics.fmean(r.metrics["state_bytes"] for r in passing[sid, h])
+                      for sid in cheap if any(r.metrics["state_bytes"] for r in passing[sid, h])]
+            row["state_kb"] = statistics.fmean(states) / 1024 if states else None
+        out["slices"][h] = row
+    base = harnesses[0]
+    for h in harnesses[1:]:
+        diff: dict = {"slice": h, "against": base}
+        if both:
+            (c, _, _, se), (c0, _, _, se0) = out["slices"][h]["correctness"], out["slices"][base]["correctness"]
+            d, se_d = c - c0, math.sqrt(se ** 2 + se0 ** 2)
+            p = permutation_p([(counted(cells[sid, h]), counted(cells[sid, base])) for sid in both],
+                              lambda g: 100 * statistics.fmean(rate(a) - rate(b) for a, b in g), rng)
+            diff["correctness"] = (d, d - Z * se_d, d + Z * se_d, p)
+        if cheap:
+            ratios = [d[base] / d[h] for d in draws]  # cost of h relative to base
+            p = permutation_p([(passing[sid, h], passing[sid, base]) for sid in cheap],
+                              lambda g: statistics.fmean(log_cost(a) - log_cost(b) for a, b in g), rng)
+            diff["cost_ratio"] = (eff[base] / eff[h], quantile(ratios, 0.025), quantile(ratios, 0.975), p)
+        out["differences"].append(diff)
+    return out
+
+
+def score_lines(sc: dict, harnesses: list[str], scenarios: list[Scenario], runs: int) -> list[str]:
+    def ci(x: tuple | None, f: str = "{:.1f}") -> str:
+        return f"{f.format(x[0])} ({f.format(x[1])}–{f.format(x[2])})" if x else "–"
+
+    def verdict(p: float) -> str:
+        return "a clear difference" if p < 0.05 else "not a clear difference at this sample size"
+
+    rows = [("**Correctness** (0–100)", lambda r: ci(r.get("correctness"))),
+            ("**Efficiency** (100 = average, higher = cheaper)", lambda r: ci(r.get("efficiency"))),
+            ("· its tokens part", lambda r: f"{r['tokens']:.1f}" if "tokens" in r else "–"),
+            ("· its wall time part", lambda r: f"{r['wall_s']:.1f}" if "wall_s" in r else "–"),
+            ("model calls (same scale, not in the score)",
+             lambda r: f"{r['model_calls']:.1f}" if "model_calls" in r else "–"),
+            ("harness overhead per run (not in the score)",
+             lambda r: f"{r['overhead_ms']:.0f} ms" if "overhead_ms" in r else "–"),
+            ("resume state per pause (not in the score)",
+             lambda r: f"{r['state_kb']:.1f} KB" if r.get("state_kb") else "–"),
+            ("runs counted (n/a, infra)", lambda r: f"{r['runs']} ({r['n/a']}, {r['infra']})")]
+    lines = ["## Scores", "", "| | " + " | ".join(harnesses) + " |", "|---|" + "---|" * len(harnesses)]
+    lines += [f"| {name} | " + " | ".join(value(sc["slices"][h]) for h in harnesses) + " |" for name, value in rows]
+    lines.append("")
+    for d in sc["differences"]:
+        parts = []
+        if c := d.get("correctness"):
+            parts.append(f"correctness {c[0]:+.1f} points (95% interval {c[1]:+.1f} to {c[2]:+.1f}, p = {c[3]:.3f}: "
+                         f"{verdict(c[3])})")
+        if r := d.get("cost_ratio"):
+            parts.append(f"cost ×{r[0]:.2f} (95% interval {r[1]:.2f}–{r[2]:.2f}, p = {r[3]:.3f}: {verdict(r[3])})")
+        lines += [f"**{d['slice']} against {d['against']}**: " + "; ".join(parts) + ".", ""]
+    eff_ids = ", ".join(sc["efficiency_scenarios"]) or "none"
+    lines += [
+        "How the scores are made (fixed before measuring):", "",
+        f"- **Correctness**: the share of counted runs that passed every check, averaged over the "
+        f"{len(sc['correctness_scenarios'])} scenarios where every slice has counted runs, each scenario weighing "
+        "the same. n/a and infra runs are left out (last row). 95% interval: normal approximation, each "
+        "scenario's variance taken from (passes + 1) / (runs + 2), so that 3 of 3 is not treated as certain.",
+        f"- **Efficiency**: only runs that passed, only in scenarios where every slice passed at least {MIN_PASSES} "
+        f"runs ({eff_ids}), so a run that fails early never counts as cheap. Per scenario, each slice's mean "
+        "tokens (in + out) and mean wall time are divided by the geometric mean of the slices; these ratios are "
+        "averaged geometrically over the scenarios and over the two measures (equal weights), and the score is 100 "
+        "divided by that. An expensive scenario weighs no more than a cheap one. 95% interval: bootstrap of the "
+        f"passing runs within each scenario ({RESAMPLES:,} resamples).",
+        f"- **Differences**: p from a permutation test: the runs are shuffled between the two slices within each "
+        f"scenario ({RESAMPLES:,} shuffles); p < 0.05 counts as a clear difference. Runs were started in a shuffled "
+        f"order (seed {sc['seed']}), so a slower provider at some moment hits every slice alike.",
+        f"- **Limits**: these numbers describe these slices on these {len(scenarios)} scenarios, which were built to "
+        f"find differences: not the frameworks in general, and not a production success rate. With {runs} run(s) "
+        "per scenario the intervals are wide; `-n 10` narrows them.",
+    ]
+    return lines
+
+
+def report(results: list[Result], scenarios: list[Scenario], harnesses: list[str], model: str, runs: int,
+           sc: dict) -> str:
     def cell(rs: list[Result]) -> str:
         out = f"{sum(r.status == 'pass' for r in rs)}/{len(counted(rs))}"
         for status in ("n/a", "infra"):
@@ -526,10 +699,11 @@ def report(results: list[Result], scenarios: list[Scenario], harnesses: list[str
             for name in dict.fromkeys(name for r in rs for name in r.failed):
                 hits = [r.failed[name] for r in rs if name in r.failed]
                 lines.append(f"- **{s.id} {h}**, {name} ({len(hits)}/{len(by[s.id, h])}): {hits[0][:300]}")
+    lines += ["", *score_lines(sc, harnesses, scenarios, runs)]
     return "\n".join(lines) + "\n"
 
 
-async def compare(scenarios: list[Scenario], harnesses: list, runs: int, jobs: int, verbose: bool):
+async def compare(scenarios: list[Scenario], harnesses: list, runs: int, jobs: int, verbose: bool, seed: int):
     client, gate = openai.AsyncOpenAI(), asyncio.Semaphore(jobs)
 
     async def one(s: Scenario, harness, i: int) -> tuple[Result, Trace]:
@@ -542,7 +716,11 @@ async def compare(scenarios: list[Scenario], harnesses: list, runs: int, jobs: i
             show(t)
         return r, t
 
-    return await asyncio.gather(*(one(s, h, i) for s in scenarios for h in harnesses for i in range(runs)))
+    work = [(s, h, i) for s in scenarios for h in harnesses for i in range(runs)]
+    order = list(range(len(work)))
+    random.Random(seed).shuffle(order)  # the slices take turns at random, so a provider slowdown hits them alike
+    tasks = {j: asyncio.ensure_future(one(*work[j])) for j in order}  # the gate lets them in in this order
+    return await asyncio.gather(*(tasks[j] for j in range(len(work))))
 
 
 def main() -> None:
@@ -552,6 +730,7 @@ def main() -> None:
     p.add_argument("--harness", default=",".join(IMPLS), help=f"slices (default {','.join(IMPLS)})")
     p.add_argument("-j", "--jobs", type=int, default=6, help="executions at the same time (default 6)")
     p.add_argument("-v", "--verbose", action="store_true", help="print every run's events")
+    p.add_argument("--seed", type=int, default=0, help="for the run order, bootstrap and permutations (default 0)")
     p.add_argument("--out", default="results", help="folder for the report and raw results (default results/)")
     args = p.parse_args()
 
@@ -562,15 +741,17 @@ def main() -> None:
     harnesses = [getattr(importlib.import_module(IMPLS[n][1]), IMPLS[n][2])() for n in args.harness.split(",")]
     model = os.environ.get("LLM_MODEL") or DEFAULT_MODEL
 
-    pairs = asyncio.run(compare(scenarios, harnesses, args.runs, args.jobs, args.verbose))
-    md = report([r for r, _ in pairs], scenarios, [h.name for h in harnesses], model, args.runs)
+    pairs = asyncio.run(compare(scenarios, harnesses, args.runs, args.jobs, args.verbose, args.seed))
+    results, names = [r for r, _ in pairs], [h.name for h in harnesses]
+    sc = scores(results, scenarios, names, args.seed)
+    md = report(results, scenarios, names, model, args.runs, sc)
     print("\n" + md)
 
     out = Path(args.out)
     out.mkdir(exist_ok=True)
     stem = out / f"live-{dt.datetime.now():%Y%m%d-%H%M%S}"
     stem.with_suffix(".md").write_text(md)
-    stem.with_suffix(".json").write_text(json.dumps({"model": model, "runs": args.runs, "results": [
+    stem.with_suffix(".json").write_text(json.dumps({"model": model, "runs": args.runs, "scores": sc, "results": [
         {**asdict(r), "error": repr(t.error) if t.error else None, "tools": t.tools,
          "events": [[{"seq": e.seq, "type": e.type, "agent": e.agent,
                       "data": {k: v for k, v in e.data.items() if k != "resume_state"}} for e in run]
