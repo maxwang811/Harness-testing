@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 
 from openai import AsyncOpenAI
@@ -46,7 +47,8 @@ def to_openai_tool(t: dict) -> dict:
 
 
 class OpenAIGateway:
-    """Calls the real model. Records each call like FakeModel does, so tests can look at what was sent."""
+    """Calls the real model. Records each call like FakeModel does, so tests can look at what was sent,
+    plus the reply, the seconds it took and the (prompt, completion) tokens."""
 
     def __init__(self, model: str | None = None, client: AsyncOpenAI | None = None):
         load_env()
@@ -55,11 +57,17 @@ class OpenAIGateway:
         self.calls: list[dict] = []
 
     async def chat(self, agent: str, messages: list[dict], tools: list[dict]) -> ModelReply:
-        self.calls.append({"agent": agent, "messages": messages, "tools": [t["name"] for t in tools]})
+        record = {"agent": agent, "messages": messages, "tools": [t["name"] for t in tools]}
+        self.calls.append(record)
         extra = {"tools": [to_openai_tool(t) for t in tools]} if tools else {}
+        start = time.perf_counter()
         resp = await self.client.chat.completions.create(
             model=self.model, messages=[to_openai(m) for m in messages], **extra)
         msg = resp.choices[0].message
         calls = [c for c in msg.tool_calls or [] if c.type == "function"]
-        return ModelReply(text=msg.content or "", tool_calls=tuple(
+        reply = ModelReply(text=msg.content or "", tool_calls=tuple(
             ToolCall(c.id, c.function.name, json.loads(c.function.arguments or "{}")) for c in calls))
+        usage = resp.usage
+        record.update(reply=reply, seconds=time.perf_counter() - start,
+                      tokens=(usage.prompt_tokens, usage.completion_tokens) if usage else (0, 0))
+        return reply
